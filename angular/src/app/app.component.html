@@ -1,0 +1,140 @@
+<main class="login-page" *ngIf="!authenticated; else application">
+  <div class="brand"><img src="assets/vekai-logo.svg" alt="VEKAI by NUNSYS" /></div>
+  <form class="login-card" (ngSubmit)="login()">
+    <div class="login-intro"><span class="eyebrow">VEKAI API · Angular</span><h1>Inicia sesión en VEKAI</h1><p>Consulta tus espacios y conversa con su conocimiento desde una integración real.</p></div>
+    <label>Correo electrónico<input type="email" autocomplete="username" [(ngModel)]="username" name="username" /></label>
+    <label>Contraseña<input type="password" autocomplete="current-password" [(ngModel)]="password" name="password" /></label>
+    <p *ngIf="status" class="login-status" [class.error]="status.startsWith('Error')">{{ status }}</p>
+    <button class="login-button" [disabled]="busy || !username || !password">{{ busy ? 'Accediendo…' : 'Iniciar sesión' }}</button>
+    <small>Ejemplo de integración · v3.12.0-rc-mcp</small>
+  </form>
+</main>
+
+<ng-template #application>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><img src="assets/vekai-logo.svg" alt="VEKAI by NUNSYS" /></div>
+      <button class="new-chat" (click)="createChat()" [disabled]="busy"><span class="nav-icon">＋</span> Nuevo chat</button>
+
+      <div class="nav-heading"><span><span class="nav-icon">▦</span> Espacios</span><button aria-label="Crear espacio" (click)="showDomainForm = !showDomainForm">+</button></div>
+      <form *ngIf="showDomainForm" class="inline-form" (ngSubmit)="createDomain()">
+        <input autofocus [(ngModel)]="domainName" name="domainName" placeholder="Nombre del espacio" />
+        <button [disabled]="!domainName || busy">Crear</button>
+      </form>
+      <nav class="domain-list" aria-label="Espacios">
+        <button *ngFor="let domain of visibleDomains" [class.active]="domain.id === domainId" (click)="chooseDomain(domain.id)" [title]="domain.limitedAccess ? 'Solo proyectos' : domain.name"><span class="domain-dot"></span>{{ domain.name }}<small *ngIf="domain.limitedAccess" class="domain-mode">Solo proyectos</small></button>
+      </nav>
+
+      <div class="nav-heading chats-heading"><span><span class="nav-icon">◇</span> Chats recientes</span></div>
+      <nav class="chat-list" aria-label="Chats">
+        <button *ngFor="let chat of chats" [class.active]="chat.id === chatId" (click)="chooseChat(chat)"><small>{{ chatDomainName(chat) }}</small><span>{{ chat.name || 'Chat ' + chat.id }}</span></button>
+        <p *ngIf="chats.length === 0" class="empty-nav">Todavía no hay conversaciones.</p>
+      </nav>
+      <div class="profile"><span class="avatar">{{ username.slice(0, 1).toUpperCase() }}</span><span class="identity"><strong>{{ username.split('@')[0] }}</strong><small>{{ username }}</small></span><button class="logout" (click)="logout()" title="Cerrar sesión" aria-label="Cerrar sesión">↪</button></div>
+    </aside>
+
+    <main class="chat-workspace">
+      <header class="chat-header">
+        <div><span class="space-label">Espacio</span><h1>{{ selectedDomain?.name || 'Selecciona un espacio' }}</h1></div>
+        <div class="header-actions">
+          <button class="header-new-chat" (click)="createChat()" [disabled]="!domainId || busy || selectedDomain?.limitedAccess"><span class="nav-icon">＋</span> Nuevo chat</button>
+          <button class="documents-button" (click)="openDocuments()" [disabled]="!domainId"><span class="nav-icon">▤</span> Documentos</button>
+          <label class="upload" [class.loading]="uploadPhase"><span *ngIf="uploadPhase" class="upload-spinner"></span><span *ngIf="!uploadPhase" class="nav-icon">↑</span> {{ uploadPhase === 'uploading' ? 'Subiendo…' : uploadPhase === 'indexing' ? 'Indexando…' : 'Subir documento' }}<input type="file" (change)="upload($any($event.target).files)" [disabled]="!domainId || !!uploadPhase" /></label>
+          <button class="mode" [class.active]="streaming" (click)="streaming = !streaming"><span></span> Streaming</button>
+        </div>
+      </header>
+      <div *ngIf="status" class="global-status" [class.error]="status.startsWith('Error') || status.includes('Solo proyectos')">{{ status }}</div>
+
+      <section class="conversation">
+        <div class="empty-state" *ngIf="!chatId">
+          <span class="empty-logo">V</span><h2>{{ domainId ? 'Empieza una conversación' : 'Selecciona un espacio' }}</h2>
+          <p>{{ domainId ? 'Crea un chat para preguntar sobre los documentos del espacio.' : 'Elige un espacio del menú lateral.' }}</p>
+          <button *ngIf="domainId" (click)="createChat()">Crear nuevo chat</button>
+        </div>
+        <div class="empty-state" *ngIf="chatId && turns.length === 0">
+          <span class="empty-logo">V</span><h2>Pregunta sobre {{ selectedDomain?.name }}</h2><p>VEKAI responderá utilizando el conocimiento disponible en este espacio.</p>
+        </div>
+        <div class="messages" *ngIf="turns.length > 0">
+          <div class="turn" *ngFor="let turn of turns; let last = last">
+            <div class="user-message"><span class="avatar">{{ username.slice(0, 1).toUpperCase() }}</span><p>{{ turn.question }}</p></div>
+            <div class="assistant-message"><span class="vekai-mark">V</span><div><strong>VEKAI</strong>
+              <details *ngIf="(busy && last && streaming) || visibleReasoningSteps(turn.reasoningSteps).length" class="reasoning-history" [class.streaming]="busy && last" [open]="busy && last" aria-live="polite">
+                <summary><span class="reasoning-summary-icon">{{ busy && last ? '•' : '✓' }}</span> {{ busy && last ? 'Razonando' : 'Razonamiento completado' }} <small>{{ visibleReasoningSteps(turn.reasoningSteps).length || 1 }} {{ (visibleReasoningSteps(turn.reasoningSteps).length || 1) === 1 ? 'paso' : 'pasos' }}</small></summary>
+                <ol>
+                  <li *ngIf="busy && last && !visibleReasoningSteps(turn.reasoningSteps).length" class="running">
+                    <span class="reasoning-step-marker">•</span><div><strong>{{ activeStreamStep || 'Interpretando la petición…' }}</strong></div>
+                  </li>
+                  <li *ngFor="let step of visibleReasoningSteps(turn.reasoningSteps)" [class.error]="step.status === 'error'" [class.running]="step.status === 'running' || step.status === 'active'">
+                    <span class="reasoning-step-marker">{{ step.status === 'error' ? '!' : (step.status === 'running' || step.status === 'active') ? '•' : '✓' }}</span><div><strong>{{ reasoningStepLabel(step) }}</strong><small *ngIf="step.durationMs">{{ step.durationMs }} ms</small><p *ngIf="step.toolErrorText">{{ step.toolErrorText }}</p></div>
+                  </li>
+                </ol>
+              </details>
+              <div *ngIf="turn.response" class="markdown-content" [innerHTML]="renderMarkdown(turn.response)"></div>
+              <button *ngIf="turn.response && turn.id" class="details-link" (click)="openTurnDetails(turn)"><span class="nav-icon">▤</span> Ver fuentes y razonamiento</button>
+            </div></div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="composer-wrap" *ngIf="chatId">
+        <div class="composer">
+          <label class="attach" title="Subir documento"><span class="nav-icon">⌕</span><input type="file" (change)="upload($any($event.target).files)" /></label>
+          <textarea rows="1" [(ngModel)]="question" [disabled]="busy" placeholder="Escribe una pregunta sobre este espacio…" (keydown)="onQuestionKeydown($event)"></textarea>
+          <button *ngIf="busy; else sendButton" class="send stop" (click)="stopStream()" aria-label="Detener">■</button>
+          <ng-template #sendButton><button class="send" (click)="send()" [disabled]="!question.trim()" aria-label="Enviar">➜</button></ng-template>
+        </div>
+        <small>El texto mostrado ha sido generado por una IA. Revisa la información relevante.</small>
+      </footer>
+    </main>
+
+    <aside class="details-panel" *ngIf="showDetails">
+      <header><div><span class="space-label">Respuesta</span><h2>Fuentes y razonamiento</h2></div><button (click)="showDetails = false">×</button></header>
+      <section class="detail-section source-section"><h3>Fuentes <span>{{ sources.length }}</span></h3>
+        <div class="source-list" *ngIf="sources.length; else noSources">
+          <article class="source-card" *ngFor="let source of sources; let sourceIndex = index" [class.clickable]="source.document?.id" [attr.tabindex]="source.document?.id ? 0 : null" (click)="openSourceDocument(source)" (keydown.enter)="openSourceDocument(source)">
+            <div class="source-card-header"><span class="source-file-icon">{{ (source.document?.documentType || source.sourceType || 'DOC').slice(0, 3).toUpperCase() }}</span><div><strong>{{ sourceTitle(source, sourceIndex) }}</strong><small>{{ source.sourceType || 'DOCUMENT' }}</small></div></div>
+            <p class="source-preview" *ngIf="sourceText(source)">{{ sourcePreview(source) }}</p>
+            <details class="source-full" *ngIf="sourceText(source).length > 300" (click)="$event.stopPropagation()"><summary>Expandir fragmento</summary><p>{{ sourceText(source) }}</p></details>
+            <div class="source-meta"><span *ngIf="source.documentPage">Página <strong>{{ source.documentPage }}</strong></span><span *ngIf="source.document?.name">{{ source.document?.name }}<ng-container *ngIf="formatSourceSize(source.document?.documentSize)"> · {{ formatSourceSize(source.document?.documentSize) }}</ng-container></span></div>
+            <span class="source-open-hint" *ngIf="source.document?.id">Pincha aquí para ver el documento en la página {{ source.documentPage || 1 }} →</span>
+          </article>
+        </div>
+        <ng-template #noSources><p>No se devolvieron fuentes documentales.</p></ng-template>
+      </section>
+      <section class="detail-section"><h3>Razonamiento y herramientas <span>{{ reasoning.length }}</span></h3><pre *ngIf="reasoning.length">{{ reasoning | json }}</pre><p *ngIf="!reasoning.length">No hay pasos de razonamiento disponibles.</p></section>
+      <section class="detail-section"><h3>Artefactos <span>{{ artifacts.length }}</span></h3><pre *ngIf="artifacts.length">{{ artifacts | json }}</pre><p *ngIf="!artifacts.length">No hay artefactos asociados.</p></section>
+    </aside>
+
+    <aside class="details-panel documents-panel" *ngIf="showDocuments">
+      <header><div><span class="space-label">{{ selectedDomain?.name }}</span><h2>Documentos</h2></div><button (click)="showDocuments = false">×</button></header>
+      <div class="indexing-banner" *ngIf="uploadPhase"><span class="upload-spinner"></span><div><strong>{{ uploadPhase === 'uploading' ? 'Subiendo documento' : 'Indexando documento' }}</strong><small>{{ uploadingDocumentName }}</small></div></div>
+      <p class="panel-summary">{{ documents.length }} documentos ordenados por fecha de incorporación.</p>
+      <div class="document-list" *ngIf="documents.length; else noDocuments">
+        <article class="document-item" *ngFor="let document of documents">
+          <span class="document-icon">{{ (document.documentType || 'DOC').slice(0, 3).toUpperCase() }}</span>
+          <div><strong>{{ document.name }}</strong><small>{{ document.createAt | date:'short' }}<ng-container *ngIf="document.createdBy"> · {{ document.createdBy }}</ng-container></small></div>
+          <span class="document-state" [class.ready]="document.state === 'INDEXED' || document.state === 'FINALIZED'">{{ document.state || document.sourceType || 'Disponible' }}</span>
+        </article>
+      </div>
+      <ng-template #noDocuments><p class="panel-empty">Este espacio todavía no contiene documentos.</p></ng-template>
+    </aside>
+
+    <div class="document-viewer-backdrop" *ngIf="selectedSource" (click)="closeDocumentViewer()">
+      <section class="document-viewer" role="dialog" aria-modal="true" aria-label="Vista del documento" (click)="$event.stopPropagation()">
+        <header><div><span class="space-label">Fuente · Página {{ selectedSource.documentPage || 1 }}</span><h2>{{ selectedSource.document?.name || 'Documento' }}</h2></div><div class="viewer-actions"><a *ngIf="documentDownloadUrl" [href]="documentDownloadUrl" target="_blank" rel="noopener">Abrir aparte</a><button (click)="closeDocumentViewer()" aria-label="Cerrar">×</button></div></header>
+        <div class="document-viewer-body">
+          <aside class="document-viewer-context">
+            <p>{{ sourceText(selectedSource) || 'Este fragmento no contiene texto para mostrar.' }}</p>
+            <strong>Página {{ selectedSource.documentPage || 1 }}</strong>
+            <div class="viewer-document-chip"><span>{{ (selectedSource.document?.documentType || 'DOC').slice(0, 3).toUpperCase() }}</span><span>{{ selectedSource.document?.name }}<small *ngIf="formatSourceSize(selectedSource.document?.documentSize)">({{ formatSourceSize(selectedSource.document?.documentSize) }})</small></span></div>
+          </aside>
+          <div class="document-viewer-preview">
+            <div class="viewer-loading" *ngIf="documentViewerLoading"><span class="upload-spinner"></span>Cargando documento…</div>
+            <div class="viewer-error" *ngIf="documentViewerError"><strong>No se pudo abrir el documento</strong><span>{{ documentViewerError }}</span></div>
+            <iframe *ngIf="documentViewerUrl && !documentViewerLoading" [src]="documentViewerUrl" [title]="selectedSource.document?.name || 'Documento'"></iframe>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</ng-template>

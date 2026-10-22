@@ -1,0 +1,22 @@
+.env
+.idea/
+.vscode/
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# .NET
+**/bin/
+**/obj/
+
+# Java
+**/target/
+
+# JavaScript
+**/node_modules/
+**/dist/
+**/.angular/
+*.tsbuildinfo

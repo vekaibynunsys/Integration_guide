@@ -1,0 +1,8 @@
+{
+  "/api": {
+    "target": "https://demo.vekai.ai",
+    "secure": true,
+    "changeOrigin": true,
+    "logLevel": "info"
+  }
+}

@@ -1,0 +1,70 @@
+name: Verify examples
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: python/requirements.txt
+      - run: pip install -r python/requirements.txt
+      - run: python -m py_compile python/main.py python/vekai_client.py
+      - run: python python/main.py --help
+
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet build dotnet/VekaiExamples.csproj --configuration Release
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - run: mvn --batch-mode --file java/pom.xml compile
+
+  angular:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: angular/package-lock.json
+      - run: npm ci
+        working-directory: angular
+      - run: npm run build
+        working-directory: angular
+
+  react:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: react/package-lock.json
+      - run: npm ci
+        working-directory: react
+      - run: npm run build
+        working-directory: react
